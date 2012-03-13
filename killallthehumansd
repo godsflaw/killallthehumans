@@ -9,6 +9,9 @@ use POE qw/Wheel::FollowTail/;
 
 my $device = "/var/log/syslog";
 my $gpgkey = "/etc/killallthehumans/humans.key";
+my $ramfs = "/mnt/ramfs";
+my $shadow = "/mnt/shadow/shadow.gpg";
+my $shadow_decrypted = "$ramfs/shadow";
 my $file = "/var/log/syslog";
 
 $SIG{INT} = \&_cleanup;
@@ -33,19 +36,14 @@ POE::Session->create(
         # XXX: make sure everything is setup for the first time
 
         # XXX: now we need to clean up and unmount old tmpfs if it exists
-        system("shred -u -n 1 /mnt/ramfs/shadow &> /dev/null");
-        system("umount /mnt/ramfs");
+        system("shred -u -n 1 $shadow_decrypted &> /dev/null");
+        system("umount $ramfs");
 
         # XXX: make new tmpfs and mount
-        system("mount -t ramfs -o size=8m ramfs /mnt/ramfs");
+        system("mount -t ramfs -o size=1m ramfs $ramfs");
 
-        # XXX: once device is mounted validate file encryption
-
-
-
-        # XXX: write data out to tmpfs
-
-        # XXX: remake the symlink
+        # XXX: once device is mounted do a decrypt and write data out to ramfs
+        system("gpg -d -q --batch -o $shadow_decrypted --passphrase-fd 3 3<$gpgkey <$shadow");
       }
     },
     got_error => sub {
