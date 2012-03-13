@@ -23,7 +23,18 @@ POE::Session->create(
       my ($line, $wheel_id) = @_[ARG0, ARG1];
       my $child = $_[HEAP]{children_by_wid}{$wheel_id};
       if ($line =~ /(sd[a-z][0-9]+)/) {
+        my $dev = $1;
         print "${line}\n";
+
+        # XXX: now we need to clean up and unmount old tmpfs if it exists
+
+        # XXX: make new tmpfs 
+
+        # XXX: now mount device
+
+        # XXX: once device is mounted validate file encryption
+
+        # XXX: write data out to tmpfs
       }
     },
     got_error => sub {
