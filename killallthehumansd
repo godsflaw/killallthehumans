@@ -9,15 +9,18 @@ use POE qw/Wheel::FollowTail/;
 
 my $device = "/var/log/syslog";
 my $gpgkey = "/etc/killallthehumans/humans.key";
+my $file = "/var/log/syslog";
+
+$SIG{INT} = \&_cleanup;
+$SIG{TERM} = \&_cleanup;
 
 POE::Session->create(
   inline_states => {
     _start => sub {
       $_[HEAP]->{wheel} = POE::Wheel::FollowTail->new(
-        Filename   => $device,
+        Filename   => $file,
         InputEvent => 'got_line',
         ErrorEvent => 'got_error',
-        SeekBack   => 1024,
       );
     },
     got_line => sub {
@@ -26,6 +29,8 @@ POE::Session->create(
       if ($line =~ /(sd[a-z][0-9]+)/) {
         my $dev = $1;
         print "${line}\n";
+
+        # XXX: make sure everything is setup for the first time
 
         # XXX: now we need to clean up and unmount old tmpfs if it exists
         system("shred -u -n 1 /mnt/ramfs/shadow &> /dev/null");
@@ -39,6 +44,8 @@ POE::Session->create(
 
 
         # XXX: write data out to tmpfs
+
+        # XXX: remake the symlink
       }
     },
     got_error => sub {
@@ -47,9 +54,15 @@ POE::Session->create(
       warn "${line}\n"
     },
   },
-  args => [$device],
+  args => [$file],
 );
 
 POE::Kernel->run();
+
+sub _cleanup {
+  # XXX: do some cleanup on tempfs
+  print "KILL ALL THE ... wait, me?\n";
+  exit 0;
+}
 
 exit 0;
