@@ -1,0 +1,38 @@
+#!/usr/bin/perl
+#
+#
+
+use warnings;
+use strict;
+
+use POE qw/Wheel::FollowTail/;
+
+my $device = "/tmp/killallthehumans";
+
+POE::Session->create(
+  inline_states => {
+    _start => sub {
+      $_[HEAP]->{wheel} = POE::Wheel::FollowTail->new(
+        Filename   => $device,
+        InputEvent => 'got_line',
+        ErrorEvent => 'got_error',
+        SeekBack   => 1024,
+      );
+    },
+    got_line => sub {
+      my ($line, $wheel_id) = @_[ARG0, ARG1];
+      my $child = $_[HEAP]{children_by_wid}{$wheel_id};
+      print "${line}\n";
+    },
+    got_error => sub {
+      my ($line, $wheel_id) = @_[ARG0, ARG1];
+      my $child = $_[HEAP]{children_by_wid}{$wheel_id};
+      warn "${line}\n"
+    },
+  },
+  args => [$device],
+);
+
+POE::Kernel->run();
+
+exit 0;
