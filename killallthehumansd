@@ -7,7 +7,7 @@ use strict;
 
 use POE qw/Wheel::FollowTail/;
 
-my $device = "/tmp/killallthehumans";
+my $device = "/var/log/syslog";
 
 POE::Session->create(
   inline_states => {
@@ -22,7 +22,9 @@ POE::Session->create(
     got_line => sub {
       my ($line, $wheel_id) = @_[ARG0, ARG1];
       my $child = $_[HEAP]{children_by_wid}{$wheel_id};
-      print "${line}\n";
+      if ($line ~= /(sd[a-z][0-9]+)/) {
+        print "${line}\n";
+      }
     },
     got_error => sub {
       my ($line, $wheel_id) = @_[ARG0, ARG1];
