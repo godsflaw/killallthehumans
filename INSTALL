@@ -1,0 +1,4 @@
+1. Become root, none of that sudo shit.
+2. cpan
+   install POE
+3. make install
