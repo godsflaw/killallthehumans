@@ -22,7 +22,7 @@ POE::Session->create(
     got_line => sub {
       my ($line, $wheel_id) = @_[ARG0, ARG1];
       my $child = $_[HEAP]{children_by_wid}{$wheel_id};
-      if ($line ~= /(sd[a-z][0-9]+)/) {
+      if ($line =~ /(sd[a-z][0-9]+)/) {
         print "${line}\n";
       }
     },
