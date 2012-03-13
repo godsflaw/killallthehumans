@@ -7,6 +7,8 @@ use strict;
 
 use POE qw/Wheel::FollowTail/;
 
+my $device = "/var/log/syslog";
+my $gpgkey = "/etc/killallthehumans/humans.key";
 my $file = "/var/log/syslog";
 
 $SIG{INT} = \&_cleanup;
@@ -31,12 +33,15 @@ POE::Session->create(
         # XXX: make sure everything is setup for the first time
 
         # XXX: now we need to clean up and unmount old tmpfs if it exists
+        system("shred -u -n 1 /mnt/ramfs/shadow &> /dev/null");
+        system("umount /mnt/ramfs");
 
-        # XXX: make new tmpfs 
-
-        # XXX: now mount device
+        # XXX: make new tmpfs and mount
+        system("mount -t ramfs -o size=8m ramfs /mnt/ramfs");
 
         # XXX: once device is mounted validate file encryption
+
+
 
         # XXX: write data out to tmpfs
 
