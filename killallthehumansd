@@ -1,7 +1,8 @@
 #!/usr/bin/env perl
 #
 # notes: 
-# gpg --passphrase-file only reads the first line so we xor the keyfile with 0x0a to remove newlines
+# gpg --passphrase-file only reads the first line so we xor the keyfile with
+# 0x0a to remove newlines
 
 use warnings;
 use strict;
@@ -9,53 +10,58 @@ use strict;
 use POE qw/Wheel::FollowTail/;
 
 my $killdir             = "/etc/killallthehumans";
-my $gpgkey              = "$killdir/humans.key";
+my $gpgkey              = "${killdir}/humans.key";
 my $ramfs               = "/mnt/ramfs";
 my $mntpoint            = "/mnt/shadow";
-my $shadow              = "$mntpoint/shadow.gpg";
-my $shadow_decrypted    = "$ramfs/shadow";
+my $shadow              = "${mntpoint}/shadow.gpg";
+my $shadow_decrypted    = "${ramfs}/shadow";
 my $shadow_original     = "/etc/shadow";
 my $file                = "/var/log/syslog";
-my $setup               = "FALSE";
+my $setup               = 0;
 
 $SIG{INT} = \&_cleanup;
 $SIG{TERM} = \&_cleanup;
 
-sub do_cleanup {
-  system("shred -u -n 1 $shadow_decrypted &> /dev/null");
-  system("umount $ramfs");
+sub _do_cleanup {
+  system("shred -u -n 1 ${shadow_decrypted} &> /dev/null");
+  system("umount ${ramfs}");
 }
 
-sub do_mounts {
-  system("mount -t ramfs -o size=1m ramfs $ramfs");
-  system("mount -t auto /dev/$dev $mntpoint");
+sub _do_mounts {
+  my $dev = shift;
+
+  system("mount -t ramfs -o size=1m ramfs ${ramfs}");
+  system("mount -t auto /dev/${dev} ${mntpoint}");
 }
 
-sub do_setup {
+sub _do_setup {
+  my $dev = shift;
+
   # make sure directories exist
-  mkdir($ramfs) if (! -d $ramfs) 
-  mkdir($mntpoint) if (! -d $mntpoint)
-  mkdir($killdir) if (! -d $killdir)
+  mkdir($ramfs, 0755) unless (-d $ramfs);
+  mkdir($mntpoint, 0755) unless (-d $mntpoint);
+  mkdir($killdir, 0755) unless (-d $killdir);
 
   # create keyfile if it does not exist
   # set keyfile to immutable to try preventing modification/removal
-  # gpg --passphrase-file only reads the first line so we xor the keyfile with 0x0a to remove newlines
+  # gpg --passphrase-file only reads the first line so we xor the keyfile
+  # with 0x0a to remove newlines
   if (! -f $gpgkey) {
-    system("dd if=/dev/urandom bs=64 count=1 of=$gpgkey.tmp 2>/dev/null");
+    system("dd if=/dev/urandom bs=64 count=1 of=${gpgkey}.tmp 2>/dev/null");
     my $keybuffer;
-    open(TMP, "$gpgkey.tmp");
-    open(KEY, ">$gpgkey");
+    open(TMP, "${gpgkey}.tmp");
+    open(KEY, ">${gpgkey}");
     binmode(TMP);
     binmode(KEY);
     read(TMP, $keybuffer, 64, 0);
-    foreach (split(//, $buffer)) {
+    foreach (split(//, $keybuffer)) {
         my $byte = $_ ^ 0x0a;
         print KEY $byte;
     }
     close(KEY);
     close(TMP);
-    system("shred -u -n 1 $gpgkey.tmp");
-    system("chattr +i $gpgkey");
+    system("shred -u -n 1 ${gpgkey}.tmp");
+    system("chattr +i ${gpgkey}");
   }
 
   # check if shadow file is a symlink, and if not:
@@ -64,14 +70,15 @@ sub do_setup {
   ## shred original shadow file
   ## create symlink to $shadow
   if (! -l $shadow_original) {
-    &do_mounts;
-    system("gpg -c -q --batch --cipher-algo AES256 -o $shadow --passphrase-file $gpgkey < $shadow_original");
-    system("shred -u -n 1 $shadow_decrypted &> /dev/null");
-    system("ln -s $shadow $shadow_original");
+    _do_mounts($dev);
+    system("gpg -c -q --batch --cipher-algo AES256 -o ${shadow} " .
+           "--passphrase-file ${gpgkey} < ${shadow_original}");
+    system("shred -u -n 1 ${shadow_decrypted} &> /dev/null");
+    system("ln -s ${shadow} ${shadow_original}");
   }
 
   # switch setup flag to TRUE
-  $setup = "TRUE";
+  $setup = 0;
 }
 
 POE::Session->create(
@@ -90,19 +97,22 @@ POE::Session->create(
         my $dev = $1;
         print "${line}\n";
 
-        # XXX: make sure everything is setup for the first time
-        if ($setup eq "FALSE") {
-            &do_setup;
+        # make sure everything is setup for the first time
+        if ($setup == 0) {
+            _do_setup($dev);
         }
 
-        # XXX: now we need to clean up and unmount old ramfs if it exists
-        &do_cleanup;
+        # now we need to clean up and unmount old ramfs if it exists
+        _do_cleanup();
 
-        # XXX: make new ramfs and mount
-        &do_mounts;
+        # make new ramfs and mount
+        # XXX: we run this in _do_setup(), make sure it's okay to run twice in
+        #      that case, or if there is a better place to run this.
+        _do_mounts($dev);
 
-        # XXX: once device is mounted do a decrypt and write data out to ramfs
-        system("gpg -d -q --batch --cipher-algo AES256 -o $shadow_decrypted --passphrase-file $gpgkey <$shadow");
+        # once device is mounted do a decrypt and write data out to ramfs
+        system("gpg -d -q --batch --cipher-algo AES256 -o ${shadow_decrypted}" .
+               " --passphrase-file ${gpgkey} < ${shadow}");
       }
     },
     got_error => sub {
@@ -118,6 +128,7 @@ POE::Kernel->run();
 
 sub _cleanup {
   print "KILL ALL THE ... wait, me?\n";
+  _do_cleanup();
   exit 0;
 }
 
