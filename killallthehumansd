@@ -8,6 +8,7 @@ use warnings;
 use strict;
 
 use POE qw/Wheel::FollowTail/;
+use MIME::Base64;
 
 my $killdir             = "/etc/killallthehumans";
 my $gpgkey              = "${killdir}/humans.key";
@@ -24,7 +25,8 @@ $SIG{TERM} = \&_cleanup;
 
 sub _do_cleanup {
   system("shred -u -n 1 ${shadow_decrypted} &> /dev/null");
-  system("umount ${ramfs}");
+  system("umount ${ramfs} 2>/dev/null");
+  system("umount ${mntpoint} 2>/dev/null");
 }
 
 sub _do_mounts {
@@ -38,9 +40,9 @@ sub _do_setup {
   my $dev = shift;
 
   # make sure directories exist
-  mkdir($ramfs, 0755) unless (-d $ramfs);
-  mkdir($mntpoint, 0755) unless (-d $mntpoint);
-  mkdir($killdir, 0755) unless (-d $killdir);
+  mkdir($ramfs, 0700) unless (-d $ramfs);
+  mkdir($mntpoint, 0700) unless (-d $mntpoint);
+  mkdir($killdir, 0700) unless (-d $killdir);
 
   # create keyfile if it does not exist
   # set keyfile to immutable to try preventing modification/removal
@@ -54,10 +56,7 @@ sub _do_setup {
     binmode(TMP);
     binmode(KEY);
     read(TMP, $keybuffer, 64, 0);
-    foreach (split(//, $keybuffer)) {
-        my $byte = $_ ^ 0x0a;
-        print KEY $byte;
-    }
+    print KEY encode_base64($keybuffer);
     close(KEY);
     close(TMP);
     system("shred -u -n 1 ${gpgkey}.tmp");
@@ -71,14 +70,16 @@ sub _do_setup {
   ## create symlink to $shadow
   if (! -l $shadow_original) {
     _do_mounts($dev);
-    system("gpg -c -q --batch --cipher-algo AES256 -o ${shadow} " .
-           "--passphrase-file ${gpgkey} < ${shadow_original}");
+    system("shred -u -n 1 ${shadow} &> /dev/null");
+    system("gpg -c -q --batch --no-use-agent --cipher-algo AES256 " .
+           "-o ${shadow} --passphrase-file ${gpgkey} < ${shadow_original}");
     system("shred -u -n 1 ${shadow_decrypted} &> /dev/null");
-    system("ln -s ${shadow} ${shadow_original}");
+    system("mv ${shadow_original} ${shadow_original}.killallthehumansd");
+    system("ln -s ${shadow_decrypted} ${shadow_original}");
   }
 
   # switch setup flag to TRUE
-  $setup = 0;
+  $setup = 1;
 }
 
 POE::Session->create(
@@ -93,9 +94,9 @@ POE::Session->create(
     got_line => sub {
       my ($line, $wheel_id) = @_[ARG0, ARG1];
       my $child = $_[HEAP]{children_by_wid}{$wheel_id};
-      if ($line =~ /(sd[a-z][0-9]+)/) {
+      if ($line =~ /sd[a-z]: (sd[a-z][0-9]+)/) {
         my $dev = $1;
-        print "${line}\n";
+        # print "${line}\n";
 
         # make sure everything is setup for the first time
         if ($setup == 0) {
@@ -111,8 +112,12 @@ POE::Session->create(
         _do_mounts($dev);
 
         # once device is mounted do a decrypt and write data out to ramfs
-        system("gpg -d -q --batch --cipher-algo AES256 -o ${shadow_decrypted}" .
-               " --passphrase-file ${gpgkey} < ${shadow}");
+        system("gpg -d -q --batch --no-use-agent --cipher-algo AES256 " .
+               "-o ${shadow_decrypted} --passphrase-file ${gpgkey} < " .
+               "${shadow}");
+      } elsif ($line =~ /USB disconnect/) {
+        # print "${line}\n";
+        _do_cleanup();
       }
     },
     got_error => sub {
@@ -127,7 +132,6 @@ POE::Session->create(
 POE::Kernel->run();
 
 sub _cleanup {
-  print "KILL ALL THE ... wait, me?\n";
   _do_cleanup();
   exit 0;
 }
