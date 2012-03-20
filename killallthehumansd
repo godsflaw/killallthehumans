@@ -7,6 +7,7 @@
 use warnings;
 use strict;
 
+use POSIX 'setsid';
 use POE qw/Wheel::FollowTail/;
 use MIME::Base64;
 
@@ -18,10 +19,29 @@ my $shadow              = "${mntpoint}/shadow.gpg";
 my $shadow_decrypted    = "${ramfs}/shadow";
 my $shadow_original     = "/etc/shadow";
 my $file                = "/var/log/syslog";
+my $pidfile             = "/var/run/killallthehumansd.pid";
 my $setup               = 0;
 
 $SIG{INT} = \&_cleanup;
 $SIG{TERM} = \&_cleanup;
+
+
+sub daemonize {
+  chdir '/'                 or die "Can't chdir to /: $!";
+  open STDIN, '/dev/null'   or die "Can't read /dev/null: $!";
+  open STDOUT, '>/dev/null' or die "Can't write to /dev/null: $!";
+  defined(my $pid = fork)   or die "Can't fork: $!";
+
+  if ($pid) {
+    open(PIDFILE, ">${pidfile}");
+    print PIDFILE $pid;
+    close(PIDFILE);
+    exit 0;
+  }
+
+  setsid                    or die "Can't start a new session: $!";
+  open STDERR, '>&STDOUT'   or die "Can't dup stdout: $!";
+}
 
 sub _do_cleanup {
   system("shred -u -n 1 ${shadow_decrypted} &> /dev/null");
@@ -34,6 +54,11 @@ sub _do_mounts {
 
   system("mount -t ramfs -o size=1m ramfs ${ramfs}");
   system("mount -t auto /dev/${dev} ${mntpoint}");
+}
+
+sub _cleanup {
+  _do_cleanup();
+  exit 0;
 }
 
 sub _do_setup {
@@ -81,6 +106,8 @@ sub _do_setup {
   # switch setup flag to TRUE
   $setup = 1;
 }
+
+daemonize();
 
 POE::Session->create(
   inline_states => {
@@ -130,10 +157,5 @@ POE::Session->create(
 );
 
 POE::Kernel->run();
-
-sub _cleanup {
-  _do_cleanup();
-  exit 0;
-}
 
 exit 0;

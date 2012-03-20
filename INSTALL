@@ -1,4 +1,6 @@
-1. Become root, none of that sudo shit.
-2. cpan
-   install POE
-3. make install
+1.  Become root, none of that sudo shit.
+2.  cpan
+    - install POE
+3.  make install
+4.  Make sure the script starts/stops on boot and shutdown.
+    - backtrack linux: update-rc.d killallthehumans defaults
