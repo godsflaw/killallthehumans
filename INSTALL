@@ -1,6 +1,14 @@
 1.  Become root, none of that sudo shit.
 2.  cpan
-    - install POE
+   - install POE
 3.  make install
 4.  Make sure the script starts/stops on boot and shutdown.
-    - backtrack linux: update-rc.d killallthehumans defaults
+   - backtrack linux: update-rc.d killallthehumans defaults
+5.  Remove any USB drives that may be connected
+6.  Start the script for the first time
+  /etc/init.d/killallthehumans start
+7.  Plug in a USB drive and wait a moment for shadow.gpg to be copied over
+   - Private key is located in /etc/killallthehumans/humans.key
+
+NOTE: This drive will now be recognized at /mnt/shadow instead of the
+typical /media/volume
